@@ -19,7 +19,7 @@ export default function PredictionCard({ prediction }: PredictionCardProps) {
   const isToday = new Date().toDateString() === matchDate.toDateString();
 
   return (
-    <Link href={`/match/${match.id}`}>
+    <Link href={`/match/${match.id}?league=${match.competition.code}`}>
       <div
         className={`group relative overflow-hidden rounded-xl border transition-all active:scale-[0.98] sm:rounded-2xl sm:active:scale-100 sm:hover:scale-[1.005] ${
           isBettingPick

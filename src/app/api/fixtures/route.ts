@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUpcomingMatches } from "@/lib/api/football-api";
+import { getUpcomingMatches } from "@/lib/api";
 import { SUPPORTED_LEAGUES } from "@/lib/config/leagues";
 
 export async function GET(request: NextRequest) {

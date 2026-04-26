@@ -5,32 +5,41 @@ import {
   getH2H,
   getTeamMatches,
   getTeamUpcoming,
-} from "@/lib/api/football-api";
+} from "@/lib/api";
 import { generatePrediction } from "@/lib/prediction/engine";
+import { SUPPORTED_LEAGUES } from "@/lib/config/leagues";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const matchId = parseInt(id);
+  const code = request.nextUrl.searchParams.get("league");
+
+  if (!code) {
+    return NextResponse.json({ error: "league query param required" }, { status: 400 });
+  }
+
+  if (!SUPPORTED_LEAGUES.find((l) => l.code === code)) {
+    return NextResponse.json({ error: "Unsupported league" }, { status: 400 });
+  }
 
   try {
-    const match = await getMatchById(matchId);
+    const match = await getMatchById(matchId, code);
     if (!match) {
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
 
-    const competitionCode = match.competition.code;
-
-    const [standingsData, h2hData, homeRecent, awayRecent, homeUpcoming, awayUpcoming] = await Promise.all([
-      getStandings(competitionCode).catch(() => []),
-      getH2H(matchId, 10).catch(() => ({ aggregates: null, matches: [] })),
-      getTeamMatches(match.homeTeam.id, "FINISHED", 10).catch(() => []),
-      getTeamMatches(match.awayTeam.id, "FINISHED", 10).catch(() => []),
-      getTeamUpcoming(match.homeTeam.id, 5).catch(() => []),
-      getTeamUpcoming(match.awayTeam.id, 5).catch(() => []),
-    ]);
+    const [standingsData, h2hData, homeRecent, awayRecent, homeUpcoming, awayUpcoming] =
+      await Promise.all([
+        getStandings(code).catch(() => []),
+        getH2H(matchId, code, 10).catch(() => ({ aggregates: null, matches: [] })),
+        getTeamMatches(match.homeTeam.id, code, 10).catch(() => []),
+        getTeamMatches(match.awayTeam.id, code, 10).catch(() => []),
+        getTeamUpcoming(match.homeTeam.id, code, 5).catch(() => []),
+        getTeamUpcoming(match.awayTeam.id, code, 5).catch(() => []),
+      ]);
 
     const table =
       standingsData.find((s) => s.type === "TOTAL")?.table ??
@@ -40,7 +49,7 @@ export async function GET(
     const prediction = generatePrediction({
       match,
       standings: table,
-      h2hAggregates: h2hData.aggregates as any,
+      h2hAggregates: h2hData.aggregates,
       h2hMatches: h2hData.matches,
       homeRecentMatches: homeRecent,
       awayRecentMatches: awayRecent,

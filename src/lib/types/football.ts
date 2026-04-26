@@ -7,6 +7,9 @@ export interface LeagueConfig {
   shortName: string;
   country: string;
   logo: string;
+  provider: "football-data" | "api-football";
+  apiFootballId?: number; // for api-football provider only
+  season?: number;        // for api-football provider only
 }
 
 // ─── Team ────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import {
   Prediction, PredictionFactor, Match, StandingEntry, H2HAggregates,
@@ -21,6 +22,8 @@ interface MatchData {
 
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const league = searchParams.get("league");
   const [data, setData] = useState<MatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,8 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     async function fetchData() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/match/${id}`);
+        if (!league) throw new Error("League not specified");
+        const res = await fetch(`/api/match/${id}?league=${league}`);
         if (!res.ok) throw new Error("Failed to load match data");
         setData(await res.json());
       } catch (err) {
@@ -38,7 +42,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       } finally { setLoading(false); }
     }
     fetchData();
-  }, [id]);
+  }, [id, league]);
 
   if (loading) return (
     <div className="min-h-dvh">

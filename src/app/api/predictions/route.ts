@@ -4,7 +4,7 @@ import {
   getStandings,
   getTeamMatches,
   getTeamUpcoming,
-} from "@/lib/api/football-api";
+} from "@/lib/api";
 import { generatePrediction } from "@/lib/prediction/engine";
 import { SUPPORTED_LEAGUES } from "@/lib/config/leagues";
 import { Prediction, Match } from "@/lib/types/football";
@@ -47,11 +47,11 @@ export async function GET(request: NextRequest) {
 
     // Settle all promises — partial failures don't kill the whole prediction
     const teamDataPromises = teamIdArray.flatMap((id) => [
-      getTeamMatches(id, "FINISHED", 10).catch((e) => {
+      getTeamMatches(id, code, 10).catch((e) => {
         console.warn(`Team ${id} recent failed:`, e.message);
         return [];
       }),
-      getTeamUpcoming(id, 5).catch((e) => {
+      getTeamUpcoming(id, code, 5).catch((e) => {
         console.warn(`Team ${id} upcoming failed:`, e.message);
         return [];
       }),
