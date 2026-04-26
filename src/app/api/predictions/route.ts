@@ -7,7 +7,7 @@ import {
 } from "@/lib/api/football-api";
 import { generatePrediction } from "@/lib/prediction/engine";
 import { SUPPORTED_LEAGUES } from "@/lib/config/leagues";
-import { Prediction, Match, StandingEntry } from "@/lib/types/football";
+import { Prediction, Match } from "@/lib/types/football";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("league");
@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Phase 1: Fetch upcoming matches + standings (2 API calls)
+    // Phase 1: matches + standings (in parallel — rate limiter handles pacing)
     const [matches, standingsData] = await Promise.all([
-      getUpcomingMatches(code, 10),
+      getUpcomingMatches(code, 7),
       getStandings(code),
     ]);
 
@@ -36,41 +36,37 @@ export async function GET(request: NextRequest) {
       standingsData[0]?.table ??
       [];
 
-    // Collect unique team IDs
+    // Phase 2: fetch team data — rate limiter queues these automatically
+    // We fire them all in parallel; the limiter will pace them at 9/min
     const teamIds = new Set<number>();
     for (const m of matches) {
       teamIds.add(m.homeTeam.id);
       teamIds.add(m.awayTeam.id);
     }
+    const teamIdArray = Array.from(teamIds);
 
-    // Phase 2: Fetch recent results + upcoming fixtures per team
-    // Each team needs 2 calls: finished matches + scheduled matches
-    // Batch to stay within 10 req/min
+    // Settle all promises — partial failures don't kill the whole prediction
+    const teamDataPromises = teamIdArray.flatMap((id) => [
+      getTeamMatches(id, "FINISHED", 10).catch((e) => {
+        console.warn(`Team ${id} recent failed:`, e.message);
+        return [];
+      }),
+      getTeamUpcoming(id, 5).catch((e) => {
+        console.warn(`Team ${id} upcoming failed:`, e.message);
+        return [];
+      }),
+    ]);
+
+    const results = await Promise.all(teamDataPromises);
+
     const teamRecentMap = new Map<number, Match[]>();
     const teamUpcomingMap = new Map<number, Match[]>();
-    const teamIdArray = Array.from(teamIds);
-    const batchSize = 4; // 4 teams x 2 calls = 8 parallel requests
+    teamIdArray.forEach((id, i) => {
+      teamRecentMap.set(id, results[i * 2] as Match[]);
+      teamUpcomingMap.set(id, results[i * 2 + 1] as Match[]);
+    });
 
-    for (let i = 0; i < teamIdArray.length; i += batchSize) {
-      const batch = teamIdArray.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.flatMap((id) => [
-          getTeamMatches(id, "FINISHED", 10).catch(() => []),
-          getTeamUpcoming(id, 5).catch(() => []),
-        ])
-      );
-
-      batch.forEach((id, idx) => {
-        teamRecentMap.set(id, results[idx * 2] as Match[]);
-        teamUpcomingMap.set(id, results[idx * 2 + 1] as Match[]);
-      });
-
-      if (i + batchSize < teamIdArray.length) {
-        await new Promise((r) => setTimeout(r, 7000));
-      }
-    }
-
-    // Phase 3: Generate predictions (pure computation, no API calls)
+    // Phase 3: generate predictions
     const predictions: Prediction[] = matches.map((match) =>
       generatePrediction({
         match,
@@ -84,7 +80,6 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Sort within matchdays: betting picks first, then by confidence
     predictions.sort((a, b) => {
       const mdA = a.match.matchday ?? 99;
       const mdB = b.match.matchday ?? 99;
@@ -96,6 +91,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ predictions });
   } catch (error) {
     console.error("Predictions API error:", error);
-    return NextResponse.json({ error: "Failed to generate predictions" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to generate predictions" },
+      { status: 500 }
+    );
   }
 }

@@ -74,6 +74,14 @@ export const SUPPORTED_LEAGUES: LeagueConfig[] = [
     country: "England",
     logo: "https://crests.football-data.org/ELC.png",
   },
+  {
+    id: 2013,
+    code: "BSA",
+    name: "Brasileirão Série A",
+    shortName: "Brasileirão",
+    country: "Brazil",
+    logo: "https://crests.football-data.org/BSA.png",
+  },
 ];
 
 export function getLeagueByCode(code: string): LeagueConfig | undefined {

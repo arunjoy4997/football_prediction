@@ -145,6 +145,12 @@ export default function HomePage() {
         <div className="mt-3 sm:mt-6">
           {loading ? (
             <div className="space-y-2.5 sm:space-y-4">
+              <div className="rounded-xl border border-dark-border bg-dark-card px-3 py-2.5 text-center sm:rounded-2xl sm:px-4 sm:py-3">
+                <p className="text-xs text-slate-400 sm:text-sm">
+                  <span className="font-medium text-accent-blue">Loading predictions...</span>
+                  <span className="ml-1 text-slate-500">First load may take 30-60s due to API rate limits. Subsequent loads are instant from cache.</span>
+                </p>
+              </div>
               <div className="skeleton h-6 w-36 rounded-lg" />
               {Array.from({ length: 4 }).map((_, i) => <PredictionCardSkeleton key={i} />)}
             </div>

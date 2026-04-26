@@ -8,7 +8,6 @@ class MemoryCache {
   private defaultTTL: number;
 
   constructor(defaultTTLSeconds = 900) {
-    // Default 15 min cache
     this.defaultTTL = defaultTTLSeconds * 1000;
   }
 
@@ -22,6 +21,13 @@ class MemoryCache {
     return entry.data;
   }
 
+  // Returns data even if expired (for stale-while-revalidate)
+  getStale<T>(key: string): { data: T | null; isStale: boolean } {
+    const entry = this.store.get(key) as CacheEntry<T> | undefined;
+    if (!entry) return { data: null, isStale: false };
+    return { data: entry.data, isStale: Date.now() > entry.expiry };
+  }
+
   set<T>(key: string, data: T, ttlSeconds?: number): void {
     const ttl = ttlSeconds ? ttlSeconds * 1000 : this.defaultTTL;
     this.store.set(key, { data, expiry: Date.now() + ttl });
@@ -31,21 +37,18 @@ class MemoryCache {
     this.store.clear();
   }
 
-  // Prune expired entries periodically
   prune(): void {
     const now = Date.now();
+    // Keep entries up to 24h past expiry for stale fallback
+    const hardCutoff = now - 24 * 60 * 60 * 1000;
     for (const [key, entry] of this.store.entries()) {
-      if (now > entry.expiry) {
-        this.store.delete(key);
-      }
+      if (entry.expiry < hardCutoff) this.store.delete(key);
     }
   }
 }
 
-// Singleton cache instance
-export const cache = new MemoryCache(900); // 15 minutes default
+export const cache = new MemoryCache(900);
 
-// Auto-prune every 5 minutes
 if (typeof setInterval !== "undefined") {
   setInterval(() => cache.prune(), 5 * 60 * 1000);
 }
