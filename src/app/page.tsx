@@ -7,12 +7,30 @@ import PredictionCard from "@/components/PredictionCard";
 import { PredictionCardSkeleton } from "@/components/LoadingSkeleton";
 import { Prediction } from "@/lib/types/football";
 import { SUPPORTED_LEAGUES } from "@/lib/config/leagues";
-import { Filter, Flame, RefreshCw, CalendarDays } from "lucide-react";
+import { Filter, Flame, RefreshCw, CalendarDays, Trophy } from "lucide-react";
 
 interface GameweekGroup {
   matchday: number | null;
   dateRange: string;
   predictions: Prediction[];
+}
+
+// Quality score: combines confidence with how clear the favorite is.
+// A 70% prediction with a clear favorite beats an 80% with all 3 outcomes close.
+function qualityScore(p: Prediction): number {
+  const sorted = [p.homeWin, p.draw, p.awayWin].sort((a, b) => b - a);
+  const spread = sorted[0] - sorted[1]; // gap between most likely and 2nd most likely
+  return p.confidence * 0.6 + spread * 1.5 + (p.isBettingPick ? 15 : 0);
+}
+
+function getTopPicks(predictions: Prediction[], limit = 3): Prediction[] {
+  // Only consider matches that haven't started
+  const upcoming = predictions.filter(
+    (p) => p.match.status === "SCHEDULED" || p.match.status === "TIMED"
+  );
+  return [...upcoming]
+    .sort((a, b) => qualityScore(b) - qualityScore(a))
+    .slice(0, limit);
 }
 
 function groupByMatchday(predictions: Prediction[]): GameweekGroup[] {
@@ -38,9 +56,10 @@ function groupByMatchday(predictions: Prediction[]): GameweekGroup[] {
         ? fmt(earliest)
         : `${fmt(earliest)} — ${fmt(latest)}`;
 
+    // Within a gameweek: betting picks first, then by quality score
     preds.sort((a, b) => {
       if (a.isBettingPick !== b.isBettingPick) return a.isBettingPick ? -1 : 1;
-      return b.confidence - a.confidence;
+      return qualityScore(b) - qualityScore(a);
     });
 
     return { matchday, dateRange, predictions: preds };
@@ -89,6 +108,7 @@ export default function HomePage() {
 
   const filtered = showBettingOnly ? predictions.filter((p) => p.isBettingPick) : predictions;
   const gameweeks = groupByMatchday(filtered);
+  const topPicks = getTopPicks(predictions, 3);
   const bettingCount = predictions.filter((p) => p.isBettingPick).length;
   const leagueConfig = SUPPORTED_LEAGUES.find((l) => l.code === selectedLeague);
 
@@ -173,33 +193,66 @@ export default function HomePage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-5 sm:space-y-8">
-              {gameweeks.map((gw) => (
-                <section key={gw.matchday ?? "unscheduled"}>
-                  {/* Gameweek Header */}
+            <>
+              {/* ─── Top Picks ─────────────────────────────────────── */}
+              {!showBettingOnly && topPicks.length > 0 && (
+                <section className="mb-5 sm:mb-8">
                   <div className="mb-2 flex items-center gap-2 sm:mb-3 sm:gap-3">
-                    <div className="flex items-center gap-1.5 rounded-md bg-dark-card px-2 py-1 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5">
-                      <CalendarDays className="h-3 w-3 text-accent-blue sm:h-4 sm:w-4" />
-                      <span className="text-xs font-semibold text-white sm:text-sm">
-                        {gw.matchday ? `GW ${gw.matchday}` : "Upcoming"}
+                    <div className="flex items-center gap-1.5 rounded-md bg-betting-gold/15 px-2 py-1 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5">
+                      <Trophy className="h-3 w-3 text-betting-gold sm:h-4 sm:w-4" />
+                      <span className="text-xs font-semibold text-betting-gold sm:text-sm">
+                        Top Picks
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-500 sm:text-xs">{gw.dateRange}</span>
-                    <div className="h-px flex-1 bg-dark-border" />
-                    <span className="text-[10px] text-slate-600 sm:text-xs">
-                      {gw.predictions.length}
+                    <span className="text-[10px] text-slate-500 sm:text-xs">
+                      Best bets across all gameweeks
                     </span>
+                    <div className="h-px flex-1 bg-dark-border" />
                   </div>
-
-                  {/* Cards */}
                   <div className="space-y-2 sm:space-y-3">
-                    {gw.predictions.map((prediction) => (
-                      <PredictionCard key={prediction.match.id} prediction={prediction} />
+                    {topPicks.map((prediction, idx) => (
+                      <div key={prediction.match.id} className="relative">
+                        <div className="absolute -left-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-betting-gold text-dark-bg sm:-left-2">
+                          <span className="flex h-5 w-5 items-center justify-center text-[10px] font-bold sm:h-6 sm:w-6 sm:text-xs">
+                            {idx + 1}
+                          </span>
+                        </div>
+                        <div className="pl-3 sm:pl-4">
+                          <PredictionCard prediction={prediction} />
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </section>
-              ))}
-            </div>
+              )}
+
+              {/* ─── All Matches by Gameweek ────────────────────────── */}
+              <div className="space-y-5 sm:space-y-8">
+                {gameweeks.map((gw) => (
+                  <section key={gw.matchday ?? "unscheduled"}>
+                    <div className="mb-2 flex items-center gap-2 sm:mb-3 sm:gap-3">
+                      <div className="flex items-center gap-1.5 rounded-md bg-dark-card px-2 py-1 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5">
+                        <CalendarDays className="h-3 w-3 text-accent-blue sm:h-4 sm:w-4" />
+                        <span className="text-xs font-semibold text-white sm:text-sm">
+                          {gw.matchday ? `GW ${gw.matchday}` : "Upcoming"}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 sm:text-xs">{gw.dateRange}</span>
+                      <div className="h-px flex-1 bg-dark-border" />
+                      <span className="text-[10px] text-slate-600 sm:text-xs">
+                        {gw.predictions.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 sm:space-y-3">
+                      {gw.predictions.map((prediction) => (
+                        <PredictionCard key={prediction.match.id} prediction={prediction} />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </main>
